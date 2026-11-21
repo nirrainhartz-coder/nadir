@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>נדיר</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(#0a3a5c,#020816);color:#e8f6ff;font-family:system-ui,Arial,sans-serif;padding:18px}
+.card{background:#00000066;border:1px solid #5fe6;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 0 24px #0cf2}
+.cat{color:#5fe;font:700 14px monospace}.title{font-size:28px;font-weight:900;margin:6px 0}
+.logo{font-size:84px;font-weight:900;text-align:center;color:#7bf;text-shadow:0 0 30px #0cf;margin:30px 0 10px}
+input{width:100%;font:700 22px system-ui;padding:14px;border-radius:10px;border:2px solid #5fe;background:#02101c;color:#fff;outline:none;margin-bottom:10px}
+button{width:100%;font:900 22px system-ui;padding:14px;border-radius:10px;border:2px solid #7bed9f;background:#0b2a22;color:#7bed9f}
+button:disabled{opacity:.4}
+.big{font:900 64px monospace;text-align:center;color:#7bed9f;text-shadow:0 0 16px #7bed9f}
+.err{color:#ff8a9a;min-height:24px;font-weight:700;margin:4px 0}
+.c{text-align:center}.pts{font:900 52px monospace;color:#7bed9f}
+</style></head><body><div id="v"></div>
+<script>
+const $=id=>document.getElementById(id),V=$('v');
+let id=localStorage.nadirId||'',S=null,off=0,sig='',es;
+const TC={c:'#9bd',m:'#7bed9f',r:'#c78bff',l:'#ffd24a'},TL={c:'נפוץ',m:'בינוני',r:'נדיר',l:'אגדי'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const post=(u,b)=>fetch(u,{method:'POST',body:JSON.stringify(b)}).then(r=>r.json());
+function connect(){if(es)es.close();es=new EventSource('/events?role=player&id='+id);
+  es.onmessage=e=>{const d=JSON.parse(e.data);if(d.gone){id='';localStorage.removeItem('nadirId');es.close();S=null;draw();return}S=d;off=d.now-Date.now();draw()}}
+function joinForm(msg=''){V.innerHTML=`<div class="logo">נדיר</div><div class="card"><input id="nm" maxlength="14" placeholder="השם שלכם" autocomplete="off"><div class="err">${msg}</div><button id="jb">יאללה לצלול 🤿</button></div>`;
+  $('jb').onclick=async()=>{const r=await post('/join',{name:$('nm').value});if(r.ok){id=r.id;localStorage.nadirId=id;connect()}else joinForm(r.msg)}}
+function draw(){
+  if(!id||!S)return joinForm();
+  const p=S.phase,m=S.me,sg=[p,S.q,!!m.cur,m.last&&1].join();
+  if(sg===sig){tick();return}sig=sg;
+  if(p==='lobby')V.innerHTML=`<div class="logo">נדיר</div><div class="card c"><div class="title">${esc(m.name)}, אתם בפנים! ✅</div><div>${S.n} שחקנים בחדר. מחכים שההוסט יתחיל...</div></div>`;
+  else if(p==='question'){
+    V.innerHTML=`<div class="card"><div class="cat">שאלה ${S.q+1}/${S.total} • ${S.cat}</div><div class="title">${S.title}</div></div>
+    <div class="card" id="box"></div>`;
+    const b=$('box');
+    if(m.cur){b.innerHTML=`<div class="c"><div class="title" style="color:#7bed9f">✔ ננעל: ${esc(m.cur.canon)}</div><div>מחכים לשאר...</div></div><div class="big" id="tm"></div>`}
+    else b.innerHTML=`<div class="big" id="tm"></div><input id="in" placeholder="הקלידו תשובה" autocomplete="off" disabled><div class="err" id="er"></div><button id="sb" disabled>שליחה ▼</button>`;
+    if(!m.cur){const send=async()=>{const t=$('in').value.trim();if(!t)return;$('sb').disabled=true;const r=await post('/answer',{id,text:t});if(!r.ok){$('er').textContent=r.msg;$('sb').disabled=false;$('in').select()}};
+      $('sb').onclick=send;$('in').onkeydown=e=>{if(e.key==='Enter')send()}}
+  }
+  else if(p==='reveal'){const l=m.last||{};
+    V.innerHTML=`<div class="card c"><div class="cat">שאלה ${S.q+1}/${S.total}</div>${l.answer?`<div class="title">${esc(l.answer)}</div><div style="font-weight:900;font-size:22px;color:${TC[l.tier]}">${TL[l.tier]}${l.uniq?' • ייחודי! +10 בונוס':l.shared?' • עוד '+l.shared+' כתבו כמו שלכם':''}</div><div class="pts">+${l.pts}</div>`:`<div class="title">לא ענית 😅</div>`}
+    <div style="margin-top:12px">עומק: <b>${m.score*10} מ'</b> • מקום ${m.rank}</div></div><div class="c">מסתכלים על המסך הגדול 👀</div>`}
+  else V.innerHTML=`<div class="card c"><div class="logo" style="font-size:60px">${m.rank===1?'🏆':m.rank===2?'🥈':m.rank===3?'🥉':'🤿'}</div><div class="title">מקום ${m.rank}</div><div>צללתם ${m.score*10} מטר</div></div>`;
+  tick();
+}
+function tick(){if(!S||S.phase!=='question')return;const t=$('tm');if(!t)return;const now=Date.now()+off;
+  if(now<S.startsAt){t.textContent=Math.ceil((S.startsAt-now)/1000);t.style.color='#ffe66d'}
+  else{const s=Math.max(0,Math.ceil((S.endsAt-now)/1000));t.textContent=s;t.style.color=s<=5?'#ff5d73':'#7bed9f';
+    const i=$('in');if(i&&i.disabled){i.disabled=false;$('sb').disabled=false;i.focus()}}}
+setInterval(tick,250);
+id?connect():joinForm();
+</script></body></html>
