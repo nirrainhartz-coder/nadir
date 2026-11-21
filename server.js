@@ -86,8 +86,10 @@ http.createServer(async (req, res) => {
   if (u.pathname === '/host' && req.method === 'POST') { act((await body(req)).action); return json(res, { ok: true }); }
   const f = u.pathname === '/' ? 'host.html' : u.pathname === '/play' ? 'play.html' : null;
   if (!f) { res.writeHead(404); return res.end(); }
+  const fp = [path.join(__dirname, 'public', f), path.join(__dirname, f)].find(p => fs.existsSync(p));
+  if (!fp) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('חסר הקובץ ' + f + ' ב-GitHub'); }
   res.writeHead(200, { 'Content-Type': MIME['.html'] });
-  fs.createReadStream(path.join(__dirname, 'public', f)).pipe(res);
+  fs.createReadStream(fp).on('error', () => res.end()).pipe(res);
 }).listen(PORT, '0.0.0.0', () => {
   console.log('\n🤿 המשחק רץ!\n  מסך ההוסט (במחשב):  http://localhost:' + PORT);
   ips().forEach(ip => console.log('  שחקנים (מהטלפון):    http://' + ip + ':' + PORT + '/play'));
