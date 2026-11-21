@@ -12,7 +12,7 @@ canvas{position:fixed;inset:0}
 .sub{font-size:20px;opacity:.8}
 #lobby{top:50%;transform:translateY(-50%);background:#020816cc;padding:28px 0;border-block:2px solid #5fe5}
 #lobby .logo{font-size:min(10vw,90px);font-weight:900;color:#7bf;text-shadow:0 0 40px #0cf,0 0 8px #fff}
-.qr{width:min(34vh,230px);height:min(34vh,230px);margin:10px auto;background:#fff;border-radius:14px;padding:8px}.qr svg{width:100%;height:100%;display:block}.url{display:inline-block;font:700 clamp(14px,1.6vw,22px) monospace;direction:ltr;background:#0008;border:2px solid #5fe;border-radius:12px;padding:10px 24px;margin:12px 0;color:#7bed9f;text-shadow:0 0 12px #7bed9f}
+.tsel{margin:12px 0 4px;font-size:19px;font-weight:700}.tb{font-size:18px;padding:5px 15px;margin:0 4px;border-radius:9px;box-shadow:none}.tb.on{background:#7bed9f;color:#012}.qr{width:min(34vh,230px);height:min(34vh,230px);margin:10px auto;background:#fff;border-radius:14px;padding:8px}.qr svg{width:100%;height:100%;display:block}.url{display:inline-block;font:700 clamp(14px,1.6vw,22px) monospace;direction:ltr;background:#0008;border:2px solid #5fe;border-radius:12px;padding:10px 24px;margin:12px 0;color:#7bed9f;text-shadow:0 0 12px #7bed9f}
 .chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:900px;margin:16px auto}
 .chip{padding:8px 18px;border-radius:30px;font-weight:800;font-size:22px;color:#012;animation:pop .4s}
 @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
@@ -28,6 +28,7 @@ button:hover{background:#12483a}
 .pod .bar{height:0;border-radius:10px 10px 0 0;transition:height 1.6s cubic-bezier(.2,1.2,.3,1);display:flex;align-items:flex-start;justify-content:center;font-size:56px;font-weight:900;color:#0006;padding-top:10px}
 </style></head><body>
 <canvas id="c"></canvas>
+<button id="mute" onclick="toggleMute()" style="position:fixed;left:14px;bottom:14px;padding:6px 12px;font-size:22px;z-index:5;pointer-events:auto">🔊</button>
 <div class="hud" id="top"></div>
 <div class="hud" id="lobby"></div>
 <div class="hud" id="zoomtxt"></div>
@@ -2342,24 +2343,57 @@ fetch('/info').then(r=>r.json()).then(i=>{const local=['localhost','127.0.0.1'].
 const es=new EventSource('/events?role=host');
 es.onmessage=e=>{S=JSON.parse(e.data);off=S.now-Date.now();render()};
 const post=a=>fetch('/host',{method:'POST',body:JSON.stringify({action:a})});
+const postv=(a,v)=>fetch('/host',{method:'POST',body:JSON.stringify({action:a,value:v})});
+const timeSel=()=>'<div class="tsel">זמן לתשובה: '+[15,25,40,60].map(t=>`<button class="tb${S.time===t?' on':''}" onclick="postv('time',${t})">${t}</button>`).join('')+' שניות</div>';
 addEventListener('keydown',e=>{if(e.code==='Space'||e.key==='Enter'){if(S.phase==='lobby')post('start');else if(S.phase==='reveal')post('next')}});
 const TC={c:'#9bd',m:'#7bed9f',r:'#c78bff',l:'#ffd24a'},TL={c:'נפוץ',m:'בינוני',r:'נדיר',l:'אגדי'};
 const sorted=()=>[...S.players].sort((a,b)=>b.score-a.score);
 
-let qc={};
+let SPW=0,qc={};
 function qrSvg(){if(!url)return'';if(qc.u!==url){const q=qrcode(0,'M');q.addData(url);q.make();qc={u:url,s:q.createSvgTag({cellSize:6,margin:0,scalable:true})}}return'<div class="qr">'+qc.s+'</div>'}
+
+// ----- סאונד -----
+let AC=null,master=null,amb=null,mute=false,lp='',lq=-9,lastSec=-1;
+function audio(){
+  if(AC){if(AC.state==='suspended')AC.resume();return}
+  AC=new(window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=mute?0:.55;master.connect(AC.destination);
+  const buf=AC.createBuffer(1,AC.sampleRate*3,AC.sampleRate),d=buf.getChannelData(0);let l=0;
+  for(let i=0;i<d.length;i++){l=(l+.02*(Math.random()*2-1))/1.02;d[i]=l*4}
+  const n=AC.createBufferSource();n.buffer=buf;n.loop=true;const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=650;
+  const gg=AC.createGain();gg.gain.value=.7;n.connect(f);f.connect(gg);gg.connect(master);n.start();amb={f};
+  setInterval(()=>{if(!mute&&AC.state==='running'&&Math.random()<.55)blip(AC.currentTime)},550);
+}
+addEventListener('pointerdown',audio);addEventListener('keydown',audio);
+function toggleMute(){mute=!mute;$('mute').textContent=mute?'🔇':'🔊';if(master)master.gain.value=mute?0:.55}
+function tone(f,t,dur,type,vol,to){const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+dur);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.05)}
+const blip=t=>tone(320+Math.random()*320,t,.12,'sine',.1,900+Math.random()*600);
+function sfx(k){if(!AC||mute)return;const t=AC.currentTime,arp=(a,ty,v,gap,dur=.5)=>a.forEach((f,i)=>tone(f,t+i*gap,dur,ty,v));
+  if(k==='ping'){tone(880,t,.6,'sine',.2);tone(660,t+.3,.7,'sine',.14)}
+  else if(k==='tick')tone(1100,t,.07,'square',.06);
+  else if(k==='dive'){tone(520,t,2.4,'triangle',.18,80);for(let i=0;i<10;i++)blip(t+i*.22)}
+  else if(k==='tc')arp([392],'sine',.16,0);
+  else if(k==='tm')arp([440,554],'sine',.17,.11);
+  else if(k==='tr')arp([523,659,784],'triangle',.18,.1);
+  else if(k==='tl')arp([523,659,784,1047,1319],'triangle',.2,.08,.7);
+  else if(k==='zoom'){tone(180,t,2.2,'sawtooth',.07,900);tone(360,t,2.2,'sine',.12,1400)}
+  else if(k==='fan'){arp([523,659,784,1047],'triangle',.22,.18,.9);setTimeout(()=>{if(AC&&!mute)[523,659,784,1047].forEach(f=>tone(f,AC.currentTime,1.6,'triangle',.14))},900)}}
+function phaseFx(){if(S.phase===lp&&S.q===lq)return;lp=S.phase;lq=S.q;if(!AC)return;
+  if(S.phase==='question')sfx('ping');
+  else if(S.phase==='reveal'){sfx('dive');S.players.forEach((p,i)=>{if(p.last&&p.last.tier)setTimeout(()=>sfx('t'+p.last.tier),700+i*260)})}
+  else if(S.phase==='zoom')sfx('zoom');else if(S.phase==='podium')sfx('fan')}
 function render(){
   const p=S.phase,n=S.players.length;
   $('lobby').style.display=p==='lobby'?'block':'none';
   if(p==='lobby'){
     $('lobby').innerHTML=`<div class="logo">נדיר</div><div class="sub">סרקו את הקוד עם מצלמת הטלפון כדי להצטרף:</div>${qrSvg()}<div class="url">${url||'...'}</div>
     <div class="chips">${S.players.map(x=>`<div class="chip" style="background:${x.color}">${esc(x.name)}</div>`).join('')||'<div class="sub">מחכים לשחקנים...</div>'}</div>
-    ${n?'<button onclick="post(\'start\')">התחילו ▼</button>':''}`;
+    ${timeSel()}${n?'<button onclick="post(\'start\')">התחילו ▼</button>':''}`;
     $('top').innerHTML='';$('ctl').innerHTML='';
   }
   if(p==='question'||p==='reveal'){
     $('top').innerHTML=`<div class="cat">שאלה ${S.q+1}/${S.total} • ${S.cat}</div><div class="title">${S.title}</div><div class="timer" id="tm"></div><div class="sub" id="ans"></div>`;
-    $('ctl').innerHTML=p==='reveal'?`<button onclick="post('next')">${S.q<S.total-1?'לשאלה הבאה ▼':'למנצח! 🏆'}</button>`:'';
+    $('ctl').innerHTML=p==='reveal'?`<button onclick="post('next')">${S.q<S.total-1?'לשאלה הבאה ▼':'למנצח! 🏆'}</button>`+(S.q<S.total-1?timeSel():''):`<button style="font-size:16px;padding:8px 22px;opacity:.65" onclick="post('skip')">סיימו עכשיו ▼</button>`;
   }
   const z=p==='zoom';$('zoomtxt').style.display=z?'block':'none';
   if(z||p==='podium'){$('top').innerHTML='';$('ctl').innerHTML='';
@@ -2367,6 +2401,7 @@ function render(){
   $('podium').style.display=p==='podium'?'flex':'none';
   if(p==='podium'&&!podDone){podDone=true;buildPodium()}
   if(p!=='podium')podDone=false;
+  phaseFx();
 }
 function buildPodium(){
   const s=sorted().slice(0,3),h=[260,360,200],ord=[1,0,2],cl=['#ffd24a','#cfd8e3','#d99a5b'],md=['🥇','🥈','🥉'];
@@ -2389,15 +2424,15 @@ function diver(x,y,px,color,t,i){
   g.fillStyle='#ffd24a';g.fillRect(-px,5*px,px,px*3);
   g.restore();
 }
-function pill(txt,x,y,bg,fg,fs){
-  g.font=`800 ${fs}px system-ui`;const w=g.measureText(txt).width+22;g.fillStyle=bg;
+function pill(txt,x,y,bg,fg,fs,mw){
+  mw=mw||SPW;g.font=`800 ${fs}px system-ui`;let w=g.measureText(txt).width+22;if(mw&&w>mw){fs=Math.max(9,fs*mw/w);g.font=`800 ${fs}px system-ui`;w=g.measureText(txt).width+22}g.fillStyle=bg;
   g.beginPath();g.roundRect(x-w/2,y-fs,w,fs*1.7,10);g.fill();g.fillStyle=fg;g.textAlign='center';g.fillText(txt,x,y+fs*.3);
 }
 function frame(t){
   const W=cv.width,H=cv.height,P=S.players,n=P.length;
   P.forEach(p=>{const d=D[p.id]||(D[p.id]={cur:p.score*10}),df=p.score*10-d.cur;d.cur+=Math.abs(df)<.5?df:Math.sign(df)*Math.max(Math.abs(df)*.022,.9)});
   const ds=P.map(p=>D[p.id].cur),mn=n?Math.min(...ds):0,mx=n?Math.max(...ds):0;
-  const tt=Math.max(-250,mn-320),tr=Math.max(900,mx+520-tt);cam.top+=(tt-cam.top)*.05;cam.rng+=(tr-cam.rng)*.05;
+  const tt=Math.max(-250,mn-500),tr=Math.max(900,mx+520-tt);cam.top+=(tt-cam.top)*.05;cam.rng+=(tr-cam.rng)*.05;
   const Y=d=>(d-cam.top)/cam.rng*H;
   // זום על המנצח
   const w=S.phase==='zoom'||S.phase==='podium'?sorted()[0]:null;
@@ -2419,7 +2454,7 @@ function frame(t){
   if(bub.length<70)bub.push({x:Math.random()*W,y:H+10,v:.5+Math.random()*1.5,r:1+Math.random()*3});
   bub.forEach(b=>{b.y-=b.v;b.x+=Math.sin(b.y/30)*.4;if(b.y<-10){b.y=H+10;b.x=Math.random()*W}g.strokeStyle='#ffffff55';g.beginPath();g.arc(b.x,b.y,b.r,0,7);g.stroke()});
   // צוללנים
-  const px=Math.max(3,Math.min(6,Math.floor(W/(n+1)/22)));
+  const px=Math.max(2,Math.min(6,Math.floor(W/(n+1)/22)));SPW=W/(n+1)-8;
   P.forEach((p,i)=>{
     const x=W*(i+1)/(n+1),y=Y(D[p.id].cur);g.globalAlpha=S.phase==='lobby'?.35:w&&w.id!==p.id?.18:1;
     if(Math.random()<.04)bub.push({x:x+px*3,y:y-px*5,v:1.2,r:2});
@@ -2429,12 +2464,14 @@ function frame(t){
     if(S.phase==='question'&&p.answered)pill('✔ ענה',x,y+px*14,'#0b3a2a','#7bed9f',px*3.4);
     if((S.phase==='reveal')&&p.last){const l=p.last;
       if(l.answer){pill(`${l.answer}  +${l.pts}`,x,y+px*14,'#000a',TC[l.tier],px*3.6);
-        pill(TL[l.tier]+(l.uniq?' • ייחודי!':l.shared?' • משותף':''),x,y+px*18.5,TC[l.tier],'#012',px*3)}
+        pill(TL[l.tier]+(l.uniq?' • ייחודי!':l.shared?' • משותף':'')+(l.speed>=7?' ⚡':''),x,y+px*18.5,TC[l.tier],'#012',px*3)}
       else pill('לא ענה',x,y+px*14,'#000a','#889',px*3.4)}
     g.globalAlpha=1});
   g.restore();
   // קונפטי
   if(S.phase==='podium')conf.forEach(c=>{c.y+=c.v;c.r+=.1;if(c.y>H)c.y=-10;g.fillStyle=c.c;g.fillRect(c.x+Math.sin(c.r)*20,c.y,c.s,c.s*.6)});
+  if(amb)amb.f.frequency.value=700-Math.min(1,mx/3500)*480;
+  if(S.phase==='question'){const nw=Date.now()+off;if(nw>=S.startsAt){const sc=Math.ceil((S.endsAt-nw)/1000);if(sc!==lastSec){lastSec=sc;if(sc<=5&&sc>0)sfx('tick')}}}else lastSec=-1;
   // טיימר
   const tm=$('tm');if(tm&&S.phase==='question'){const now=Date.now()+off;
     if(now<S.startsAt){tm.textContent=Math.ceil((S.startsAt-now)/1000);tm.style.color='#ffe66d'}

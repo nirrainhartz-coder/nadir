@@ -38,7 +38,7 @@ function draw(){
       $('sb').onclick=send;$('in').onkeydown=e=>{if(e.key==='Enter')send()}}
   }
   else if(p==='reveal'){const l=m.last||{};
-    V.innerHTML=`<div class="card c"><div class="cat">שאלה ${S.q+1}/${S.total}</div>${l.answer?`<div class="title">${esc(l.answer)}</div><div style="font-weight:900;font-size:22px;color:${TC[l.tier]}">${TL[l.tier]}${l.uniq?' • ייחודי! +10 בונוס':l.shared?' • עוד '+l.shared+' כתבו כמו שלכם':''}</div><div class="pts">+${l.pts}</div>`:`<div class="title">לא ענית 😅</div>`}
+    V.innerHTML=`<div class="card c"><div class="cat">שאלה ${S.q+1}/${S.total}</div>${l.answer?`<div class="title">${esc(l.answer)}</div><div style="font-weight:900;font-size:22px;color:${TC[l.tier]}">${TL[l.tier]}${l.uniq?' • ייחודי! +10 בונוס':l.shared?' • עוד '+l.shared+' כתבו כמו שלכם':''}</div>${l.speed?'<div style="margin-top:4px;color:#ffe66d">⚡ בונוס מהירות +'+l.speed+'</div>':''}<div class="pts">+${l.pts}</div>`:`<div class="title">לא ענית 😅</div>`}
     <div style="margin-top:12px">עומק: <b>${m.score*10} מ'</b> • מקום ${m.rank}</div></div><div class="c">מסתכלים על המסך הגדול 👀</div>`}
   else V.innerHTML=`<div class="card c"><div class="logo" style="font-size:60px">${m.rank===1?'🏆':m.rank===2?'🥈':m.rank===3?'🥉':'🤿'}</div><div class="title">מקום ${m.rank}</div><div>צללתם ${m.score*10} מטר</div></div>`;
   tick();
